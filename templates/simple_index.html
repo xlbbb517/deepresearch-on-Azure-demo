@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deep Research on Azure</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .input-section {
+            margin-bottom: 30px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #555;
+        }
+        
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        
+        button:hover {
+            background-color: #0056b3;
+        }
+        
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        .status.running {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.waiting {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.completed {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .conversation {
+            margin-top: 30px;
+            max-height: 500px;
+            overflow-y: auto;
+            border: 2px solid #eee;
+            border-radius: 5px;
+            padding: 20px;
+            background-color: #fafafa;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        
+        .message.user {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .message.assistant {
+            background-color: #f3e5f5;
+            border-left: 4px solid #9c27b0;
+        }
+        
+        .message.system {
+            background-color: #fff3e0;
+            border-left: 4px solid #ff9800;
+        }
+        
+        .message-header {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #555;
+        }
+        
+        .message-content {
+            white-space: pre-wrap;
+            line-height: 1.4;
+        }
+        
+        .download-section {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e8f5e8;
+            border-radius: 5px;
+            border: 2px solid #4caf50;
+        }
+        
+        .download-button {
+            background-color: #4caf50;
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            display: inline-block;
+        }
+        
+        .download-button:hover {
+            background-color: #45a049;
+        }
+        
+        .footer {
+            margin-top: 40px;
+            padding: 20px 0;
+            text-align: center;
+            border-top: 1px solid #eee;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .copyright {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Deep Research on Azure</h1>
+        
+        <div class="input-section">
+            <label for="researchTopic">研究主题:</label>
+            <textarea id="researchTopic" placeholder="请输入您要研究的主题，例如：Give me the latest research into quantum computing over the last year."></textarea>
+            <br><br>
+            <button id="startBtn" onclick="startResearch()">开始研究</button>
+        </div>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <div class="input-section" id="userInputSection" style="display: none;">
+            <label for="userMessage">补充信息:</label>
+            <textarea id="userMessage" placeholder="请提供更多信息..."></textarea>
+            <br><br>
+            <button id="sendBtn" onclick="sendMessage()">发送消息</button>
+        </div>
+        
+        <div class="conversation" id="conversation" style="display: none;">
+            <h3>对话历史</h3>
+            <div id="messages"></div>
+        </div>
+        
+        <div id="downloadSection" style="display: none;" class="download-section">
+            <h3>✅ 研究完成！</h3>
+            <p>研究报告已生成完成。</p>
+            <a id="downloadLink" href="#" class="download-button">下载研究报告</a>
+        </div>
+        
+        <div class="footer">
+            <div class="copyright">
+                © 2025 Microsoft GCR DN TECH TEAM. All rights reserved.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let statusCheckInterval;
+        
+        function startResearch() {
+            const topic = document.getElementById('researchTopic').value.trim();
+            if (!topic) {
+                alert('请输入研究主题');
+                return;
+            }
+            
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('researchTopic').disabled = true;
+            
+            fetch('/api/start_research', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({topic: topic})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showStatus('error', data.error);
+                    resetUI();
+                } else {
+                    showStatus('running', '研究会话已启动，正在初始化...');
+                    document.getElementById('conversation').style.display = 'block';
+                    startStatusCheck();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showStatus('error', '启动研究时发生错误');
+                resetUI();
+            });
+        }
+        
+        function sendMessage() {
+            const message = document.getElementById('userMessage').value.trim();
+            if (!message) {
+                alert('请输入消息');
+                return;
+            }
+            
+            document.getElementById('sendBtn').disabled = true;
+            document.getElementById('userMessage').disabled = true;
+            
+            fetch('/api/send_message', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({message: message})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showStatus('error', data.error);
+                } else {
+                    document.getElementById('userMessage').value = '';
+                    document.getElementById('userInputSection').style.display = 'none';
+                    showStatus('running', '正在处理您的消息...');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showStatus('error', '发送消息时发生错误');
+            })
+            .finally(() => {
+                document.getElementById('sendBtn').disabled = false;
+                document.getElementById('userMessage').disabled = false;
+            });
+        }
+        
+        function startStatusCheck() {
+            statusCheckInterval = setInterval(checkStatus, 2000);
+        }
+        
+        function checkStatus() {
+            fetch('/api/status')
+            .then(response => response.json())
+            .then(data => {
+                updateMessages(data.messages);
+                
+                if (data.error) {
+                    showStatus('error', `错误: ${data.error}`);
+                    stopStatusCheck();
+                    resetUI();
+                } else if (data.result_file) {
+                    showStatus('completed', '研究已完成！');
+                    showDownloadSection(data.result_file);
+                    stopStatusCheck();
+                } else if (data.waiting_for_input) {
+                    showStatus('waiting', '需要您提供更多信息');
+                    document.getElementById('userInputSection').style.display = 'block';
+                } else if (data.is_running) {
+                    showStatus('running', '研究正在进行中，请等待...');
+                    document.getElementById('userInputSection').style.display = 'none';
+                } else {
+                    showStatus('waiting', '准备就绪');
+                }
+            })
+            .catch(error => {
+                console.error('Status check error:', error);
+            });
+        }
+        
+        function updateMessages(messages) {
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML = '';
+            
+            messages.forEach(msg => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${msg.role}`;
+                
+                const roleText = {
+                    'user': '用户',
+                    'assistant': '助手',
+                    'system': '系统'
+                }[msg.role] || msg.role;
+                
+                messageDiv.innerHTML = `
+                    <div class="message-header">${roleText} - ${new Date(msg.timestamp).toLocaleString()}</div>
+                    <div class="message-content">${msg.content}</div>
+                `;
+                
+                messagesDiv.appendChild(messageDiv);
+            });
+            
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        function showStatus(type, message) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
+        }
+        
+        function showDownloadSection(filename) {
+            const downloadSection = document.getElementById('downloadSection');
+            const downloadLink = document.getElementById('downloadLink');
+            downloadLink.href = `/api/download/${filename}`;
+            downloadSection.style.display = 'block';
+        }
+        
+        function stopStatusCheck() {
+            if (statusCheckInterval) {
+                clearInterval(statusCheckInterval);
+                statusCheckInterval = null;
+            }
+        }
+        
+        function resetUI() {
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('researchTopic').disabled = false;
+            document.getElementById('userInputSection').style.display = 'none';
+        }
+        
+        // 页面关闭时停止状态检查
+        window.addEventListener('beforeunload', stopStatusCheck);
+    </script>
+</body>
+</html>
