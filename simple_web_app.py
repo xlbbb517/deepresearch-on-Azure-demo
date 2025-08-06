@@ -7,36 +7,56 @@ from typing import Optional
 from datetime import datetime
 import threading
 import queue
-
-# 直接使用你的 demo 脚本逻辑，不做复杂包装
 from azure.ai.projects.aio import AIProjectClient
 from azure.ai.agents.aio import AgentsClient
 from azure.ai.agents.models import DeepResearchTool, MessageRole, ThreadMessage
 from azure.identity.aio import DefaultAzureCredential
 from dotenv import load_dotenv
 
-# 加载本地环境变量（只在本地开发时）
+# local testing
 if os.path.exists('.env'):
     load_dotenv()
-    print("✅ 已加载本地环境变量")
 
-# 检查必需的环境变量
-required_env_vars = ['AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET', 'AZURE_TENANT_ID']
+# 检查必需的环境变量（静默检查）
+required_env_vars = [
+    'AZURE_AI_PROJECT_ENDPOINT',
+    'BING_CONNECTION_NAME'
+]
+
+# Azure认证相关变量
+auth_env_vars = ['AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET', 'AZURE_TENANT_ID']
+
 missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
 
+
+auth_vars_configured = all(
+    os.environ.get(var) and os.environ.get(var).strip() 
+    for var in auth_env_vars
+)
+
+# 如果有缺失的环境变量，程序无法运行
 if missing_vars:
+    # 只在这种情况下立即显示错误
     print(f"❌ 缺少环境变量: {', '.join(missing_vars)}")
-else:
-    print("✅ Azure认证环境变量已配置")
+    print("请在 .env 文件中配置这些变量")
+    exit(1)
+
+# 从环境变量获取配置
+AZURE_AI_PROJECT_ENDPOINT = os.environ.get('AZURE_AI_PROJECT_ENDPOINT')
+BING_CONNECTION_NAME = os.environ.get('BING_CONNECTION_NAME')
+DEEP_RESEARCH_MODEL = os.environ.get('DEEP_RESEARCH_MODEL', 'o3-deep-research')
+AGENT_MODEL = os.environ.get('AGENT_MODEL', 'gpt-4o')
+AGENT_NAME = os.environ.get('AGENT_NAME', 'my-research-agent')
+FLASK_HOST = os.environ.get('FLASK_HOST', '127.0.0.1')
+FLASK_DEBUG = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
 
 # 创建日志目录
 if not os.path.exists('logs'):
     os.makedirs('logs')
 
-# 配置日志
 log_filename = f"logs/simple_web_{datetime.now().strftime('%Y%m%d')}.log"
 
-# 配置根日志器 - 只输出到文件
+# 配置日志
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -45,19 +65,17 @@ logging.basicConfig(
     ]
 )
 
-# 创建控制台处理器 - 只显示重要信息
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO)
 console_formatter = logging.Formatter('%(levelname)s - %(message)s')
 console_handler.setFormatter(console_formatter)
 
-# 配置应用日志器
 logger = logging.getLogger(__name__)
 logger.addHandler(console_handler)
 logger.setLevel(logging.INFO)
 
-# 设置第三方库的日志级别 - 减少噪音
-logging.getLogger('werkzeug').setLevel(logging.ERROR)  # Flask 请求日志
+# 设置第三方库的日志级别
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
 logging.getLogger('flask').setLevel(logging.ERROR)
 logging.getLogger('azure').setLevel(logging.WARNING)
 logging.getLogger('azure.core').setLevel(logging.ERROR)
@@ -67,7 +85,7 @@ logging.getLogger('urllib3').setLevel(logging.ERROR)
 logging.getLogger('aiohttp').setLevel(logging.ERROR)
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'deep-research-web-ui-secret-key-2025'
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'deep-research-web-ui-secret-key-2025')
 
 # 禁用 Flask 的请求日志
 app.logger.setLevel(logging.ERROR)
@@ -170,7 +188,7 @@ async def run_research_session():
         # Use 'async with' to manage the credential lifecycle
         async with DefaultAzureCredential() as credential:
             project_client = AIProjectClient(
-                endpoint='https://aifoundry-xlb-westus.services.ai.azure.com/api/projects/deepresearch',
+                endpoint=AZURE_AI_PROJECT_ENDPOINT,
                 credential=credential,
             )
             
@@ -179,18 +197,18 @@ async def run_research_session():
                     agents_client = project_client.agents
                     agents_client_for_cleanup = agents_client
 
-                    conn = await project_client.connections.get(name="binggroundingxlb")
+                    conn = await project_client.connections.get(name=BING_CONNECTION_NAME)
                     conn_id = conn.id
                     file_logger.debug(f"获取到Bing连接ID: {conn_id}")
                     
                     deep_research_tool = DeepResearchTool(
                         bing_grounding_connection_id=conn_id,
-                        deep_research_model='o3-deep-research',
+                        deep_research_model=DEEP_RESEARCH_MODEL,
                     )
 
                     agent = await agents_client.create_agent(
-                        model='gpt-4o',
-                        name="my-agent",
+                        model=AGENT_MODEL,
+                        name=AGENT_NAME,
                         instructions=(
                             "You are a helpful Agent that assists in researching scientific topics. "
                             "First, you should ask clarifying questions to get enough information. "
@@ -385,7 +403,6 @@ async def run_research_session():
         file_logger.info("研究会话结束")
 
 def run_research_worker():
-    """在单独线程中运行异步研究会话"""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -395,12 +412,10 @@ def run_research_worker():
 
 @app.route('/')
 def index():
-    # 不记录每次页面访问
     return render_template('simple_index.html')
 
 @app.route('/api/status')
 def get_status():
-    # 不记录每次状态查询
     return jsonify(status)
 
 @app.route('/api/start_research', methods=['POST'])
@@ -469,13 +484,31 @@ def download_file(filename):
         return jsonify({'error': '文件未找到'}), 404
 
 if __name__ == '__main__':
-    # 获取端口号，Azure会自动设置PORT环境变量
+    # 只在主进程中显示配置信息
+    print("✅ 项目配置环境变量已配置")
+    
+    if auth_vars_configured:
+        print("✅ 使用应用注册凭据进行认证")
+    else:
+        print("ℹ️  使用 Azure CLI 认证（请确保已执行 'az login'）")
+    
+    print(f"🔧 配置信息:")
+    print(f"   Project Endpoint: {AZURE_AI_PROJECT_ENDPOINT}")
+    print(f"   Bing Connection: {BING_CONNECTION_NAME}")
+    print(f"   Research Model: {DEEP_RESEARCH_MODEL}")
+    print(f"   Agent Model: {AGENT_MODEL}")
+    
     port = int(os.environ.get('PORT', 5000))
+    
     print("🔍 启动 Deep Research Web UI...")
-    print(f"📍 访问地址: http://0.0.0.0:{port}")
+    if FLASK_HOST == '127.0.0.1':
+        print(f"📍 本地访问地址: http://localhost:{port}")
+        print(f"📍 或者访问: http://127.0.0.1:{port}")
+    else:
+        print(f"📍 访问地址: http://{FLASK_HOST}:{port}")
     print("📄 日志文件: " + log_filename)
     print("⏹️  按 Ctrl+C 停止服务")
     print("-" * 50)
     
     # 生产环境配置
-    app.run(debug=False, host='0.0.0.0', port=port)
+    app.run(debug=FLASK_DEBUG, host=FLASK_HOST, port=port)
